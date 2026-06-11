@@ -1,0 +1,28 @@
+
+# Build folders
+bin/
+obj/
+
+# Visual Studio
+.vs/
+
+# Rider
+.idea/
+
+# VS Code
+.vscode/
+
+# User files
+*.user
+*.suo
+
+# SQLite database
+*.db
+*.db-shm
+*.db-wal
+
+# Test results
+TestResults/
+
+# NuGet
+*.nupkg
