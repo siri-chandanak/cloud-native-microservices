@@ -4,6 +4,7 @@ using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using OrderService.Data;
 using Microsoft.OpenApi.Models;
+using OrderService.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -12,6 +13,8 @@ builder.Services.AddControllers();
 
 // Add Swagger
 builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddSingleton<RabbitMqPublisher>();
 
 builder.Services.AddSwaggerGen(options =>
 {

@@ -1,9 +1,11 @@
-using Microsoft.AspNetCore.Authorization;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using OrderService.Data;
-using OrderService.Models;
-using OrderService.DTOs;
+using Microsoft.AspNetCore.Authorization; 
+using Microsoft.AspNetCore.Mvc; 
+using Microsoft.EntityFrameworkCore; 
+using OrderService.Data; 
+using OrderService.DTOs; 
+using OrderService.Models; 
+using OrderService.Services; 
+using Shared.Events; 
 using System.Security.Claims;
 
 namespace OrderService.Controllers;
@@ -15,36 +17,39 @@ public class OrdersController : ControllerBase
 {
     private readonly ApplicationDbContext _context;
 
-    public OrdersController(ApplicationDbContext context)
+    private readonly RabbitMqPublisher _publisher;
+
+    private int CurrentUserId =>
+        int.Parse(
+            User.FindFirst(ClaimTypes.NameIdentifier)!
+                .Value);
+
+    public OrdersController(
+        ApplicationDbContext context,
+        RabbitMqPublisher publisher)
     {
         _context = context;
+        _publisher = publisher;
     }
 
     [HttpGet]
     public async Task<IActionResult> GetOrders()
     {
-        var userId = int.Parse(
-            User.FindFirst(ClaimTypes.NameIdentifier)!
-                .Value);
-
-        var orders = await _context.Orders
-            .Where(x => x.UserId == userId)
-            .OrderByDescending(x => x.CreatedAt)
+        var orders = await _context.Orders 
+            .Where(x => x.UserId == CurrentUserId) 
+            .OrderByDescending(x => x.CreatedAt) 
             .ToListAsync();
 
         return Ok(orders);
     }
 
     [HttpPost]
-    public async Task<IActionResult> CreateOrder([FromBody] CreateOrderRequest request)
+    public async Task<IActionResult> CreateOrder(
+        [FromBody] CreateOrderRequest request)
     {
-        var userId = int.Parse(
-            User.FindFirst(ClaimTypes.NameIdentifier)!
-                .Value);
-
         var order = new Order
         {
-            UserId = userId,
+            UserId = CurrentUserId,
             ProductName = request.ProductName,
             Quantity = request.Quantity,
             Price = request.Price,
@@ -56,20 +61,37 @@ public class OrdersController : ControllerBase
 
         await _context.SaveChangesAsync();
 
+        try
+        {
+            var orderCreatedEvent =
+                new OrderCreatedEvent
+                {
+                    OrderId = order.Id,
+                    UserId = order.UserId,
+                    ProductName = order.ProductName,
+                    Price = order.Price
+                };
+
+            _publisher.Publish(
+                "order-created",
+                orderCreatedEvent);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(
+                $"RabbitMQ publish failed: {ex.Message}");
+        }
+
         return Ok(order);
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> GetOrder(int id)
     {
-        var userId = int.Parse(
-            User.FindFirst(ClaimTypes.NameIdentifier)!
-                .Value);
-
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == id &&
-                     x.UserId == userId);
+                     x.UserId == CurrentUserId);
 
         if (order == null)
         {
@@ -82,14 +104,10 @@ public class OrdersController : ControllerBase
     [HttpPut("{id}")]
     public async Task<IActionResult> UpdateOrder(int id, [FromBody] CreateOrderRequest request)
     {
-        var userId = int.Parse(
-            User.FindFirst(ClaimTypes.NameIdentifier)!
-                .Value);
-
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == id &&
-                     x.UserId == userId);
+                     x.UserId == CurrentUserId);
 
         if (order == null)
         {
@@ -108,14 +126,10 @@ public class OrdersController : ControllerBase
     [HttpDelete("{id}")]
     public async Task<IActionResult> DeleteOrder(int id)
     {
-        var userId = int.Parse(
-            User.FindFirst(ClaimTypes.NameIdentifier)!
-                .Value);
-
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == id &&
-                     x.UserId == userId);
+                     x.UserId == CurrentUserId);
 
         if (order == null)
         {
@@ -134,14 +148,10 @@ public class OrdersController : ControllerBase
     [HttpPatch("{id}/status")]
     public async Task<IActionResult> UpdateOrderStatus(int id, [FromBody] UpdateOrderStatusRequest request)
     {
-        var userId = int.Parse(
-            User.FindFirst(ClaimTypes.NameIdentifier)!
-                .Value);
-
         var order = await _context.Orders
             .FirstOrDefaultAsync(
                 x => x.Id == id &&
-                     x.UserId == userId);
+                     x.UserId == CurrentUserId);
 
         if (order == null)
         {
